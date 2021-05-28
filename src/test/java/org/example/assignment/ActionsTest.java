@@ -1,10 +1,7 @@
 package org.example.assignment;
 
-import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -13,9 +10,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -28,21 +22,24 @@ class ActionsTest {
 
     Actions actions;
     Gson gson = new Gson();
-    Type listOfActionAvgType = new TypeToken<ArrayList<Actions.ActionAvg>>() {}.getType();
 
     private ExecutorService createExecutorService(int numberOfThreads) {
         return Executors.newFixedThreadPool(numberOfThreads);
     }
 
-    private String createJson(String action, int time) {
+    private String createAddActionJson(String action, int time) {
         return String.format( "{ \"action\": \"%s\", \"time\": %d }", action, time );
+    }
+
+    private String createActionAverageJson(String action, int average) {
+        return String.format( "{\"action\":\"%s\",\"avg\":%d}", action, average );
     }
 
     private List<String> generateActions(int n) {
         List<String> actions = new ArrayList<>(n);
         for (int i=0; i < n; i++) {
             actions.add(
-                createJson( i % 2 == 0? "jump" : "run", ThreadLocalRandom.current().nextInt(499) + 1 ));
+                createAddActionJson( i % 2 == 0? "jump" : "run", ThreadLocalRandom.current().nextInt(499) + 1 ));
         }
         return actions;
     }
@@ -68,25 +65,27 @@ class ActionsTest {
 
     @Test
     public void testNonThreaded() {
-        actions.add( createJson( "jump", 100 ) );
-        actions.add( createJson( "run", 75 ) );
-        actions.add( createJson( "jump", 200 ) );
+        actions.addAction( createAddActionJson( "jump", 100 ) );
+        actions.addAction( createAddActionJson( "run", 75 ) );
+        actions.addAction( createAddActionJson( "jump", 200 ) );
 
-        String actualAvgs = actions.getStats();
+        String actualAvgsJson = actions.getStats();
 
-        List<ActionAvg> expectedAvgs = Arrays.asList(
-            new ActionAvg( "run", 75 ),
-            new ActionAvg( "jump", 150 ) );
-        assertEquals(gson.toJson( expectedAvgs, listOfActionAvgType ), actualAvgs);
+        final String expectedAvgsJson =
+            String.format( "[%s,%s]",
+                createActionAverageJson( "run", 75 ),
+                createActionAverageJson( "jump", 150 ) );
+
+        assertEquals(expectedAvgsJson, actualAvgsJson);
     }
 
     @ParameterizedTest
-    @ValueSource(ints = { 4, 10, 50, 100 })
+    @ValueSource(ints = { 2, 4, 10, 50, 100 })
     public void testThreadedNThreads(int threads) {
         List<String> actionJsons = generateActions( 1000 );
 
         //calculate expected results first, using no threads logic
-        actionJsons.forEach( a -> actions.add( a ) );
+        actionJsons.forEach( a -> actions.addAction( a ) );
         String expectedJson = actions.getStats();
 
         actions = new Actions();
@@ -94,20 +93,19 @@ class ActionsTest {
         ExecutorService executorService = createExecutorService( threads );
 
         List<Future> futures = actionJsons.stream()
-            .map( json -> executorService.submit( () -> {actions.add( json ); actions.getStats();} ) )
+            .map( json -> executorService.submit( () -> {actions.addAction( json ); actions.getStats();} ) )
             .collect( Collectors.toList());
 
         waitForFuturesToComplete( futures );
+        executorService.shutdown();
 
-        System.out.println(expectedJson);
-        System.out.println(actions.getStats());
         assertEquals( expectedJson, actions.getStats() );
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"", "  "} )
     public void testAdd_invalidJson(String json) {
-        IllegalArgumentException exception = assertThrows( IllegalArgumentException.class, () -> actions.add( json ) );
+        IllegalArgumentException exception = assertThrows( IllegalArgumentException.class, () -> actions.addAction( json ) );
 
         assertEquals( "json cannot be null blank or empty, but was: " + json, exception.getMessage() );
     }
@@ -115,7 +113,7 @@ class ActionsTest {
     @ParameterizedTest
     @ValueSource(strings = {"{\"time\": 5}", "{\"action\": \"\" }", "{\"action\": \" \"}"} )
     public void testAdd_invalidJsonAction(String json) {
-        IllegalArgumentException exception = assertThrows( IllegalArgumentException.class, () -> actions.add( json ) );
+        IllegalArgumentException exception = assertThrows( IllegalArgumentException.class, () -> actions.addAction( json ) );
 
         assertTrue( exception.getMessage().startsWith( "action cannot be null blank or empty, but was: " ) );
     }
@@ -123,50 +121,20 @@ class ActionsTest {
     @ParameterizedTest
     @ValueSource(strings = { "{\"action\": \"run\"}", "{\"action\": \"run\", \"time\":0 }", "{\"action\": \"run\", \"time\": -148}"} )
     public void testAdd_invalidJsonTime(String json) {
-        IllegalArgumentException exception = assertThrows( IllegalArgumentException.class, () -> actions.add( json ) );
+        IllegalArgumentException exception = assertThrows( IllegalArgumentException.class, () -> actions.addAction( json ) );
 
         assertTrue( exception.getMessage().startsWith( "time must be positive, but was: " ) );
     }
 
     @Test
     public void testAdd_nullJson() {
-        IllegalArgumentException exception = assertThrows( IllegalArgumentException.class, () -> actions.add( null ) );
+        IllegalArgumentException exception = assertThrows( IllegalArgumentException.class, () -> actions.addAction( null ) );
 
         assertEquals( "json cannot be null blank or empty, but was: null", exception.getMessage() );
     }
 
-    class ActionAvg {
-        String action;
-        int avg;
-
-        public ActionAvg(String action, int avg) {
-            this.action = action;
-            this.avg = avg;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if ( this == o ) {
-                return true;
-            }
-            if ( o == null || getClass() != o.getClass() ) {
-                return false;
-            }
-            ActionAvg actionAvg = (ActionAvg) o;
-            return avg == actionAvg.avg && Objects.equals( action, actionAvg.action );
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash( action, avg );
-        }
-
-        @Override
-        public String toString() {
-            return "ActionAvg{" +
-                "action='" + action + '\'' +
-                ", avg=" + avg +
-                '}';
-        }
+    @Test
+    public void testStats_empty() {
+        assertEquals( "[]", actions.getStats() );
     }
 }

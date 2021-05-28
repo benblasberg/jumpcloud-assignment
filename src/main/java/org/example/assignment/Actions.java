@@ -9,11 +9,16 @@ import java.util.stream.Collectors;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
+/**
+ * Thread-safe class for adding actions and retrieving stats.
+ */
 public class Actions {
-
     private final ConcurrentMap<String, Action> actionsByName;
     private final Gson gson;
 
+    /**
+     * Constructs a new {@link Actions} instance.
+     */
     public Actions() {
         gson = new GsonBuilder().create();
         actionsByName = new ConcurrentHashMap<>();
@@ -31,20 +36,22 @@ public class Actions {
      *
      * @throws IllegalArgumentException if the given {@code json} is invalid
      */
-    public void add(String json) {
-        if (json == null || json.trim().isEmpty()) {
+    public void addAction(String json) {
+        if (isNullBlankOrEmpty( json )) {
             throw new IllegalArgumentException("json cannot be null blank or empty, but was: " + json);
         }
-        final ActionJson action = gson.fromJson( json, ActionJson.class );
 
-        if (action.action == null || action.action.trim().isEmpty()) {
-            throw new IllegalArgumentException("action cannot be null blank or empty, but was: " + action.action);
+        final AddActionJson action = gson.fromJson( json, AddActionJson.class );
+
+        if (isNullBlankOrEmpty( action.getAction() )) {
+            throw new IllegalArgumentException("action cannot be null blank or empty, but was: " + action.getAction());
         }
 
-        if (action.time <= 0) {
-            throw new IllegalArgumentException("time must be positive, but was: " + action.time);
+        if (action.getTime() <= 0) {
+            throw new IllegalArgumentException("time must be positive, but was: " + action.getTime());
         }
 
+        //atomically add or update the action in the concurrent map
         actionsByName.compute(action.action, (key, val) -> {
             Action a = Optional.ofNullable(val).orElse( new Action( key ) );
             a.addTime( action.time );
@@ -54,7 +61,7 @@ public class Actions {
 
     /**
      * Builds and returns a list of the average time taken for each action
-     * @return a {@link String} representing the json equivalent of a list of actions with their average times.
+     * @return a {@link String} representing the json equivalent of a list of actions with their average times, or an empty list if no actions have been added.
      *
      * <p>Example:</p>
      * <pre>
@@ -65,49 +72,44 @@ public class Actions {
      * </pre>
      */
     public String getStats() {
-            final List<ActionAvg> actionAverages = actionsByName
+            final List<ActionAverageJson> actionAverageJsons = actionsByName
                 .entrySet()
                 .stream()
-                .map( entry -> new ActionAvg( entry.getKey(), entry.getValue().getAvg() ) )
+                .map( entry -> new ActionAverageJson( entry.getKey(), entry.getValue().getAvg() ) )
                 .collect( Collectors.toList() );
-            return gson.toJson( actionAverages );
+            return gson.toJson( actionAverageJsons );
     }
 
-    //todo: change the naming of this
-    static class ActionJson {
+    private boolean isNullBlankOrEmpty(final String str) {
+        return str == null || str.trim().isEmpty();
+    }
 
+    /**
+     * Java class representation of the json used to add an action
+     */
+    private static class AddActionJson {
         private String action;
-
         private int time;
+
+        public String getAction() {
+            return action;
+        }
+
+        public int getTime() {
+            return time;
+        }
     }
 
-    static class ActionAvg {
+    /**
+     * Java class representation of the json used to return action averages
+     */
+    private static class ActionAverageJson {
         private String action;
         private int avg;
 
-        public ActionAvg(String action, int avg) {
+        public ActionAverageJson(String action, int avg) {
             this.action = action;
             this.avg = avg;
         }
     }
-
-    private static class Action {
-        private String name;
-        private int totalTime;
-        private int totalEntries;
-
-        public Action(String name) {
-            this.name = name;
-        }
-
-        public int getAvg() {
-            return totalTime/totalEntries;
-        }
-
-        public void addTime(int time) {
-            totalTime += time;
-            totalEntries++;
-        }
-    }
-
 }
