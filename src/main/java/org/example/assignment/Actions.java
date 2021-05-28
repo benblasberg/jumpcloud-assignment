@@ -20,8 +20,15 @@ public class Actions {
     }
 
     /**
+     * Adds the action represented by the given {@code json} string to the set of all actions.
+     * @param json the json string representing the action. Cannot be null, blank, or empty.
      *
-     * @param json
+     * <p>Must contain the following fields:</p>
+     * <ul>
+     *   <li>{@code action} - a string representing the action being taken. Cannot be null, blank, or empty.</li>
+     *   <li>{@code time} - an integer representing the amount of time the action took. Must be positive.</li>
+     * </ul>
+     *
      * @throws IllegalArgumentException if the given {@code json} is invalid
      */
     public void add(String json) {
@@ -45,6 +52,18 @@ public class Actions {
         } );
     }
 
+    /**
+     * Builds and returns a list of the average time taken for each action
+     * @return a {@link String} representing the json equivalent of a list of actions with their average times.
+     *
+     * <p>Example:</p>
+     * <pre>
+     *     [
+     *         { "action": "run", "avg": 200 },
+     *         { "action": "walk", "avg": 500 }
+     *     ]
+     * </pre>
+     */
     public String getStats() {
             final List<ActionAvg> actionAverages = actionsByName
                 .entrySet()
