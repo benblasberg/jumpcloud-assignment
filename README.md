@@ -6,7 +6,7 @@
 4. Times must be greater than zero
 5. Times are within the range of a java integer, and their sum will not surpass the range of a java integer.
 6. The number of action entries for an action will not surpass the range of a java integer.
-7. The stats response json doesn't only needs to be valid json, and not formatted in any way.
+7. The getStats() response json only needs to be valid json, and not formatted in any way.
 
 
 ## Running the project
